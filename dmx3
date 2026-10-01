@@ -1,4 +1,4 @@
-# inspect_status.py
+# dump_all.py
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -13,24 +13,37 @@ iframe = driver.execute_script("""
 """)
 driver.switch_to.frame(iframe)
 
-print("\n=== elements named SVMX_Status__c ===")
-els = driver.find_elements(By.NAME, "SVMX_Status__c")
-print(f"Found {len(els)}")
-for i, el in enumerate(els):
-    print(f"\n[{i}] tag={el.tag_name}  type={el.get_attribute('type')}")
-    print(f"    class={el.get_attribute('class')}")
-    print(f"    role={el.get_attribute('role')}")
-    print(f"    readonly={el.get_attribute('readonly')}")
-    print(f"    is_displayed={el.is_displayed()}  is_enabled={el.is_enabled()}")
-    print("    outerHTML:")
-    print("   ", (el.get_attribute("outerHTML") or "")[:500])
+# Make sure you're ON the PICKLISTS tab in the browser right now
 
-print("\n=== ancestor comboboxes ===")
-for i, cb in enumerate(driver.find_elements(By.TAG_NAME, "lightning-base-combobox")):
-    print(f"[{i}] name={cb.get_attribute('name')} data-id={cb.get_attribute('data-id')}")
+tags = ["input", "select", "button", "lightning-base-combobox",
+        "lightning-combobox", "lightning-input"]
 
-print("\n=== buttons near SVMX_Status ===")
-for i, b in enumerate(driver.find_elements(By.XPATH, "//button[contains(@name,'Status') or contains(@data-id,'Status')]")):
-    print(f"[{i}] name={b.get_attribute('name')} data-id={b.get_attribute('data-id')} text='{b.text}'")
+seen = set()
+for tag in tags:
+    for el in driver.find_elements(By.TAG_NAME, tag):
+        key = (tag, el.get_attribute("name"), el.get_attribute("data-id"),
+               el.get_attribute("data-field-api-name"))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        name = el.get_attribute("name")
+        did  = el.get_attribute("data-id")
+        api  = el.get_attribute("data-field-api-name")
+        typ  = el.get_attribute("type")
+        cls  = (el.get_attribute("class") or "")[:60]
+        disp = el.is_displayed()
+
+        # only print things that look interesting
+        hay = " ".join(str(x) for x in (name, did, api, cls)).lower()
+        if any(k in hay for k in ("status", "pass", "picklist", "result")):
+            print(f"<{tag}> name={name!r} id={did!r} api={api!r} "
+                  f"type={typ!r} visible={disp} class={cls!r}")
+
+print("\n--- all visible selects on page ---")
+for s in driver.find_elements(By.TAG_NAME, "select"):
+    if s.is_displayed():
+        print(f"select name={s.get_attribute('name')!r} "
+              f"options={[o.text for o in s.find_elements(By.TAG_NAME,'option')][:10]}")
 
 input("\nPress Enter to close...")
