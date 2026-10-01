@@ -1,0 +1,498 @@
+from datetime import datetime, timedelta
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+yesterday = (datetime.today() - timedelta(days=1)).strftime("%d/%m/%Y")
+
+# ============================================================
+# ATTACH TO LIVE SERVICEMAX SESSION
+# ============================================================
+
+def attach_to_servicemax():
+
+    options = Options()
+    options.add_experimental_option(
+        "debuggerAddress",
+        "127.0.0.1:9222"
+    )
+
+    driver = webdriver.Chrome(options=options)
+
+    iframe = driver.execute_script("""
+        return document
+            .querySelector('force-aloha-page')
+            .shadowRoot
+            .querySelector('iframe');
+    """)
+
+    driver.switch_to.frame(iframe)
+
+    return driver
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def wait_name(driver, name, timeout=30):
+
+    return WebDriverWait(driver, timeout).until(
+        EC.element_to_be_clickable(
+            (By.NAME, name)
+        )
+    )
+
+
+def click_xpath(driver, xpath, timeout=30):
+
+    return WebDriverWait(driver, timeout).until(
+        EC.element_to_be_clickable(
+            (By.XPATH, xpath)
+        )
+    ).click()
+
+
+def set_text(element, value):
+
+    element.click()
+
+    try:
+        element.clear()
+    except:
+        pass
+
+    element.send_keys(Keys.CONTROL, "a")
+    element.send_keys(Keys.DELETE)
+    element.send_keys(value)
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+ENGINEER = "Richard Maganga"
+
+SOFTWARE_VERSION = "12.1.1.8"
+
+CAUSE = "Annual PM checks"
+
+COMPLETION_COMMENTS = "PM complete"
+
+CALIBRATION_TOOLS = [
+    ""
+    
+]
+
+REQUIRES_CALIBRATION = True
+
+
+# ============================================================
+# DYNAMIC TEXT
+# ============================================================
+
+today = datetime.now().strftime("%d/%m/%Y")
+
+onsite_time = datetime.now().strftime(
+    "%I:%M %p"
+).lstrip("0")
+
+if REQUIRES_CALIBRATION:
+
+    WORK_PERFORMED = (
+#        f"Performed PM service and rate calibration "
+        f"Performed PM service as per BD service manual."
+        f"as per BD service manual. "
+#        f"Performed on {today}."
+        f"Performed on {yesterday}."
+    )
+
+else:
+
+    WORK_PERFORMED = (
+        f"Performed PM service as per BD service manual. "
+        f"Performed on {today}."
+    )
+
+
+# ============================================================
+# CONNECT
+# ============================================================
+
+driver = attach_to_servicemax()
+
+print("Connected to ServiceMax")
+
+
+# ============================================================
+# ENGINEER
+# ============================================================
+
+engineer = wait_name(
+    driver,
+    "SVMXC__Group_Member__c"
+)
+
+engineer.click()
+engineer.send_keys(ENGINEER)
+
+try:
+    engineer.send_keys(Keys.DOWN)
+    engineer.send_keys(Keys.DOWN)
+    engineer.send_keys(Keys.ENTER)
+except:
+    pass
+
+print("Engineer complete")
+
+
+# ============================================================
+# ONSITE TIME
+# ============================================================
+
+onsite = wait_name(
+    driver,
+    "SVMXC__Actual_Onsite_Response__c-time"
+)
+
+set_text(
+    onsite,
+    onsite_time
+)
+
+onsite.send_keys(Keys.TAB)
+
+print("Time complete")
+
+
+# ============================================================
+# SOFTWARE VERSION
+# ============================================================
+
+software = wait_name(
+    driver,
+    "Software_Version_LookUp__c"
+)
+
+software.click()
+software.send_keys(SOFTWARE_VERSION)
+
+try:
+    software.send_keys(Keys.DOWN)
+    software.send_keys(Keys.DOWN)
+    software.send_keys(Keys.ENTER)
+except:
+    pass
+
+print("Software complete")
+
+
+# ============================================================
+# CAUSE OF INTERVENTION
+# ============================================================
+
+cause = wait_name(
+    driver,
+    "Cause__c"
+)
+
+set_text(
+    cause,
+    CAUSE
+)
+
+print("Cause complete")
+
+
+# ============================================================
+# WORK PERFORMED
+# ============================================================
+
+work_done = wait_name(
+    driver,
+    "SVMXC__Work_Performed__c"
+)
+
+set_text(
+    work_done,
+    WORK_PERFORMED
+)
+
+print("Work performed complete")
+
+
+# ============================================================
+# COMPLETION COMMENTS
+# ============================================================
+
+comments = wait_name(
+    driver,
+    "Solution_Comments__c"
+)
+
+set_text(
+    comments,
+    COMPLETION_COMMENTS
+)
+
+print("Comments complete")
+
+# ============================================================
+# CALIBRATION TOOLS
+# ============================================================
+
+import time
+from selenium.webdriver.common.action_chains import ActionChains
+
+click_xpath(
+    driver,
+    "//a[normalize-space()='CALIBRATION TOOLS']"
+)
+
+print("Calibration tab opened")
+
+time.sleep(1)
+
+
+for tool in CALIBRATION_TOOLS:
+
+    print(f"Adding calibration tool: {tool}")
+
+    actions = ActionChains(driver)
+
+    # Open Add Parts
+    actions.send_keys(Keys.TAB).perform()
+
+    time.sleep(1)
+
+    actions.send_keys(Keys.ENTER).perform()
+
+    print("Add Parts activated")
+
+    # Let popup appear
+    time.sleep(1)
+
+    # First search (keyboard)
+    actions.send_keys(tool).perform()
+
+    print(f"Typed {tool}")
+
+    actions.send_keys(Keys.ENTER).perform()
+
+    print("Search submitted")
+
+    time.sleep(1)
+
+
+
+    # Try locating Quick Find field and re-enter same value
+    try:
+
+        quick_find = driver.find_element(
+            By.NAME,
+            "LookupSearch--Input"
+        )
+
+        quick_find.click()
+
+        quick_find.send_keys(Keys.CONTROL, "a")
+        quick_find.send_keys(Keys.DELETE)
+
+        quick_find.send_keys(tool)
+        quick_find.send_keys(Keys.ENTER)
+
+        print(f"Quick Find updated with {tool}")
+
+        time.sleep(2)
+
+    except Exception as ex:
+
+        print("Quick Find not found, continuing...")
+        print(ex)
+
+
+    # Move to checkbox
+    actions.send_keys(Keys.TAB).perform()
+
+    time.sleep(1)
+
+    actions.send_keys(Keys.SPACE).perform()
+
+    print("Checkbox ticked")
+
+    time.sleep(1)
+
+    # Move to Add button
+    actions.send_keys(Keys.TAB).perform()
+
+    time.sleep(1)
+
+    actions.send_keys(Keys.ENTER).perform()
+
+    print(f"Added {tool}")
+
+    time.sleep(3)
+
+    driver.find_element(By.NAME, "LookupSearch--Input").send_keys("9316", Keys.ENTER)
+    time.sleep(1)
+
+    driver.find_element(
+    By.XPATH,
+    "//*[contains(text(),'13119316')]"
+).click()
+
+    print("Calibration tool selected")
+
+time.sleep(1)
+
+# Add button
+
+actions.send_keys(Keys.TAB).perform()
+actions.send_keys(Keys.TAB).perform()
+
+time.sleep(1)
+
+actions.send_keys(Keys.ENTER).perform()
+
+print(f"Added {tool}")
+
+click_xpath(
+    driver,
+    "//a[normalize-space()='CALIBRATION TOOLS']"
+)
+
+print("Calibration tab opened")
+
+time.sleep(3)
+
+for tool in CALIBRATION_TOOLS:
+
+    print(f"Adding calibration tool: {tool}")
+
+    actions = ActionChains(driver)
+
+    # Open Add Parts
+    actions.send_keys(Keys.TAB).perform()
+
+    time.sleep(1)
+
+    actions.send_keys(Keys.ENTER).perform()
+
+    print("Add Parts activated")
+
+    # Let popup appear
+    time.sleep(1)
+
+    # First search (keyboard)
+    actions.send_keys(tool).perform()
+
+    print(f"Typed {tool}")
+
+    actions.send_keys(Keys.ENTER).perform()
+
+    print("Search submitted")
+
+    time.sleep(2)
+
+
+
+    # Try locating Quick Find field and re-enter same value
+    try:
+
+        quick_find = driver.find_element(
+            By.NAME,
+            "LookupSearch--Input"
+        )
+
+        quick_find.click()
+
+        quick_find.send_keys(Keys.CONTROL, "a")
+        quick_find.send_keys(Keys.DELETE)
+
+        quick_find.send_keys(tool)
+        quick_find.send_keys(Keys.ENTER)
+
+        print(f"Quick Find updated with {tool}")
+
+        time.sleep(2)
+
+    except Exception as ex:
+
+        print("Quick Find not found, continuing...")
+        print(ex)
+
+
+    # Move to checkbox
+    actions.send_keys(Keys.TAB).perform()
+
+    time.sleep(1)
+
+    actions.send_keys(Keys.SPACE).perform()
+
+    print("Checkbox ticked")
+
+    time.sleep(1)
+
+    # Move to Add button
+    actions.send_keys(Keys.TAB).perform()
+
+    time.sleep(1)
+
+    actions.send_keys(Keys.ENTER).perform()
+
+    print(f"Added {tool}")
+
+    time.sleep(3)
+
+    driver.find_element(By.NAME, "LookupSearch--Input").send_keys("8279", Keys.ENTER)
+    time.sleep(3)
+
+    driver.find_element(
+    By.XPATH,
+    "//*[contains(text(),'B916538279')]"
+).click()
+
+    print("Calibration tool selected")
+
+time.sleep(1)
+
+# Add button
+
+actions.send_keys(Keys.TAB).perform()
+actions.send_keys(Keys.TAB).perform()
+time.sleep(1)
+
+actions.send_keys(Keys.ENTER).perform()
+time.sleep(3)
+    
+# ============================================================
+# SAVE PAGE
+# ============================================================
+driver.find_element(By.XPATH, "//button[.//span[normalize-space()='Save']]").click()
+
+print("PAGE SAVED")
+
+print("PM PAGE COMPLETE")
+
+time.sleep(10)
+
+driver.find_element(By.CSS_SELECTOR, "span.slds-checkbox_faux").click()
+time.sleep(2)
+driver.find_element(By.XPATH, "//a[normalize-space()='PICKLISTS']").click()
+time.sleep(2)
+
+status_fields = driver.find_elements(By.NAME, "SVMX_Status__c")
+
+for field in status_fields:
+    field.click()
+    field.send_keys("Pass")
+    field.send_keys(Keys.ENTER)
+
+driver.find_element(
+    By.XPATH,
+    "//a[normalize-space()='READINGS']"
+).click()
