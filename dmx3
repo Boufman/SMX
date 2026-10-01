@@ -1,4 +1,4 @@
-# dump_all.py
+# find_frames.py
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -7,43 +7,58 @@ opts = Options()
 opts.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 driver = webdriver.Chrome(options=opts)
 
-iframe = driver.execute_script("""
-    return document.querySelector('force-aloha-page')
-                   .shadowRoot.querySelector('iframe');
-""")
-driver.switch_to.frame(iframe)
+def walk(driver, depth=0):
+    pad = "  " * depth
+    try:
+        url = driver.execute_script("return location.href")
+        title = driver.execute_script("return document.title")
+        count = driver.execute_script("return document.querySelectorAll('*').length")
+        print(f"{pad}FRAME depth={depth} url={url[:90]} title={title[:40]} nodes={count}")
+    except Exception as e:
+        print(f"{pad}FRAME depth={depth} (error reading: {e})")
 
-# Make sure you're ON the PICKLISTS tab in the browser right now
+    # Dump any element whose name/data-id/placeholder hints at a status picklist
+    try:
+        hits = driver.execute_script("""
+            const out = [];
+            const all = document.querySelectorAll('*');
+            for (const el of all) {
+                const n = el.getAttribute('name') || '';
+                const d = el.getAttribute('data-id') || '';
+                const a = el.getAttribute('data-field-api-name') || '';
+                const p = el.getAttribute('placeholder') || '';
+                const s = (n+' '+d+' '+a+' '+p).toLowerCase();
+                if (s.includes('status') || s.includes('pass') || s.includes('picklist')) {
+                    out.push({
+                        tag: el.tagName,
+                        name: n, dataId: d, api: a,
+                        role: el.getAttribute('role'),
+                        cls: (el.getAttribute('class')||'').slice(0,50),
+                        text: (el.textContent||'').trim().slice(0,40)
+                    });
+                }
+            }
+            return out.slice(0, 40);
+        """)
+        for h in hits:
+            print(f"{pad}  > <{h['tag']}> name={h['name']!r} data-id={h['dataId']!r} "
+                  f"api={h['api']!r} role={h['role']!r} text={h['text']!r}")
+    except Exception as e:
+        print(f"{pad}  (hit scan failed: {e})")
 
-tags = ["input", "select", "button", "lightning-base-combobox",
-        "lightning-combobox", "lightning-input"]
+    # Recurse into every iframe / frame in THIS document
+    frames = driver.find_elements(By.TAG_NAME, "iframe") + driver.find_elements(By.TAG_NAME, "frame")
+    for i, f in enumerate(frames):
+        try:
+            driver.switch_to.frame(f)
+            walk(driver, depth + 1)
+        except Exception as e:
+            print(f"{pad}  (cannot enter frame {i}: {e})")
+        finally:
+            driver.switch_to.parent_frame()
 
-seen = set()
-for tag in tags:
-    for el in driver.find_elements(By.TAG_NAME, tag):
-        key = (tag, el.get_attribute("name"), el.get_attribute("data-id"),
-               el.get_attribute("data-field-api-name"))
-        if key in seen:
-            continue
-        seen.add(key)
-
-        name = el.get_attribute("name")
-        did  = el.get_attribute("data-id")
-        api  = el.get_attribute("data-field-api-name")
-        typ  = el.get_attribute("type")
-        cls  = (el.get_attribute("class") or "")[:60]
-        disp = el.is_displayed()
-
-        # only print things that look interesting
-        hay = " ".join(str(x) for x in (name, did, api, cls)).lower()
-        if any(k in hay for k in ("status", "pass", "picklist", "result")):
-            print(f"<{tag}> name={name!r} id={did!r} api={api!r} "
-                  f"type={typ!r} visible={disp} class={cls!r}")
-
-print("\n--- all visible selects on page ---")
-for s in driver.find_elements(By.TAG_NAME, "select"):
-    if s.is_displayed():
-        print(f"select name={s.get_attribute('name')!r} "
-              f"options={[o.text for o in s.find_elements(By.TAG_NAME,'option')][:10]}")
+# top of the tree
+driver.switch_to.default_content()
+walk(driver)
 
 input("\nPress Enter to close...")
