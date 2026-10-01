@@ -1,0 +1,35 @@
+# inspect_status.py
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+
+opts = Options()
+opts.add_experimental_option("debuggerAddress", "127.0.0.1:2221")
+driver = webdriver.Chrome(options=opts)
+
+iframe = driver.execute_script("""
+    return document.querySelector('force-aloha-page')
+                   .shadowRoot.querySelector('iframe');
+""")
+driver.switch_to.frame(iframe)
+
+# Make sure you're on the PICKLISTS tab before running the rest
+print("=== elements with name SVMX_Status__c ===")
+for i, el in enumerate(driver.find_elements(By.NAME, "SVMX_Status__c")):
+    print(f"\n[{i}] tag={el.tag_name}")
+    print(f"    type={el.get_attribute('type')}")
+    print(f"    class={el.get_attribute('class')}")
+    print(f"    role={el.get_attribute('role')}")
+    print(f"    readonly={el.get_attribute('readonly')}")
+    print(f"    outerHTML (first 400 chars):")
+    print("   ", (el.get_attribute("outerHTML") or "")[:400])
+
+print("\n=== elements containing text 'Pass' nearby ===")
+for i, el in enumerate(driver.find_elements(By.XPATH, "//*[contains(text(),'Pass')]")):
+    print(f"[{i}] tag={el.tag_name} class={el.get_attribute('class')}")
+
+print("\n=== any lightning-base-combobox on page ===")
+for i, el in enumerate(driver.find_elements(By.TAG_NAME, "lightning-base-combobox")):
+    print(f"[{i}] name={el.get_attribute('name')} data-id={el.get_attribute('data-id')}")
+
+input("\nPress Enter to close...")
